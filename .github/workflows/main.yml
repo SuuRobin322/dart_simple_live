@@ -1,4 +1,4 @@
-name: Auto Build Windows Exe
+name: Build Flutter Windows App
 
 on:
   workflow_dispatch:
@@ -11,46 +11,61 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          sdk: stable
+          channel: 'stable'
+          cache: true
 
-      - name: Find Project and Compile
+      - name: Enable Windows Build
+        run: flutter config --enable-windows-desktop
+
+      - name: Find Project and Build
         run: |
-          # 1. 自动查找 pubspec.yaml 的位置
-          echo "正在搜索 pubspec.yaml..."
+          # 1. 寻找包含 pubspec.yaml 的文件夹 (通常是 simple_live_app)
+          echo "🔍 正在搜索 Flutter 项目..."
           $pubspec = Get-ChildItem -Path . -Filter pubspec.yaml -Recurse | Select-Object -First 1
           
           if ($null -eq $pubspec) {
-            echo "❌ 严重错误：在整个仓库中都找不到 pubspec.yaml！请确认你是否正确 Fork 了代码。"
+            echo "❌ 错误：找不到 pubspec.yaml 文件！"
             exit 1
           }
 
-          # 2. 进入该目录
           $projectDir = $pubspec.DirectoryName
           echo "✅ 找到项目路径: $projectDir"
           cd $projectDir
 
-          # 3. 安装依赖
-          echo "正在安装依赖..."
-          dart pub get
+          # 2. 安装依赖
+          echo "📦 正在安装依赖..."
+          flutter pub get
 
-          # 4. 确认入口文件 (通常是 bin/main.dart 或 bin/dart_simple_live.dart)
-          # 这里尝试自动探测 bin 下的 .dart 文件
-          $entryFile = Get-ChildItem -Path "bin" -Filter "*.dart" | Select-Object -First 1
-          if ($null -eq $entryFile) {
-             echo "❌ 错误：在 bin 文件夹下找不到 .dart 入口文件。"
+          # 3. 开始编译 Windows 版本
+          echo "🚀 开始编译 Windows 版本 (这可能需要几分钟)..."
+          flutter build windows --release
+
+          # 4. 准备打包
+          # Flutter 编译后的文件通常在 build/windows/x64/runner/Release (新版可能路径略有不同，这里做个检查)
+          $buildPath = "$projectDir\build\windows\x64\runner\Release"
+          
+          if (-not (Test-Path $buildPath)) {
+             # 尝试另一个可能的路径
+             $buildPath = "$projectDir\build\windows\runner\Release"
+          }
+
+          if (Test-Path $buildPath) {
+             echo "✅ 编译成功，输出路径: $buildPath"
+             
+             # 5. 压缩成 ZIP (因为 .exe 必须配合里面的 .dll 才能运行，不能只拿一个文件)
+             $zipPath = "$env:GITHUB_WORKSPACE\SimpleLive_Windows.zip"
+             Compress-Archive -Path "$buildPath\*" -DestinationPath $zipPath
+             echo "📦 已压缩为: $zipPath"
+          } else {
+             echo "❌ 错误：找不到编译后的输出文件夹。"
              exit 1
           }
-          echo "✅ 找到入口文件: $($entryFile.FullName)"
-
-          # 5. 编译
-          echo "开始编译..."
-          dart compile exe "$($entryFile.FullName)" -o "$env:GITHUB_WORKSPACE\simple_live.exe"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simple_live_windows
-          path: simple_live.exe
+          name: SimpleLive_Windows_Package
+          path: SimpleLive_Windows.zip
