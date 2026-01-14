@@ -1,7 +1,7 @@
-name: Build Windows Exe
+name: Auto Build Windows Exe
 
 on:
-  workflow_dispatch: # 允许手动点击按钮触发编译
+  workflow_dispatch:
 
 jobs:
   build:
@@ -16,12 +16,38 @@ jobs:
         with:
           sdk: stable
 
-      - name: Install dependencies
-        run: dart pub get
+      - name: Find Project and Compile
+        run: |
+          # 1. 自动查找 pubspec.yaml 的位置
+          echo "正在搜索 pubspec.yaml..."
+          $pubspec = Get-ChildItem -Path . -Filter pubspec.yaml -Recurse | Select-Object -First 1
+          
+          if ($null -eq $pubspec) {
+            echo "❌ 严重错误：在整个仓库中都找不到 pubspec.yaml！请确认你是否正确 Fork 了代码。"
+            exit 1
+          }
 
-      - name: Compile to EXE
-        # 注意：这里假设入口文件是 bin/main.dart，如果报错请看下文提示
-        run: dart compile exe bin/main.dart -o simple_live.exe
+          # 2. 进入该目录
+          $projectDir = $pubspec.DirectoryName
+          echo "✅ 找到项目路径: $projectDir"
+          cd $projectDir
+
+          # 3. 安装依赖
+          echo "正在安装依赖..."
+          dart pub get
+
+          # 4. 确认入口文件 (通常是 bin/main.dart 或 bin/dart_simple_live.dart)
+          # 这里尝试自动探测 bin 下的 .dart 文件
+          $entryFile = Get-ChildItem -Path "bin" -Filter "*.dart" | Select-Object -First 1
+          if ($null -eq $entryFile) {
+             echo "❌ 错误：在 bin 文件夹下找不到 .dart 入口文件。"
+             exit 1
+          }
+          echo "✅ 找到入口文件: $($entryFile.FullName)"
+
+          # 5. 编译
+          echo "开始编译..."
+          dart compile exe "$($entryFile.FullName)" -o "$env:GITHUB_WORKSPACE\simple_live.exe"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
