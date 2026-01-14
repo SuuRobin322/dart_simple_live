@@ -1,0 +1,30 @@
+name: Build Windows Exe
+
+on:
+  workflow_dispatch: # 允许手动点击按钮触发编译
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Compile to EXE
+        # 注意：这里假设入口文件是 bin/main.dart，如果报错请看下文提示
+        run: dart compile exe bin/main.dart -o simple_live.exe
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simple_live_windows
+          path: simple_live.exe
